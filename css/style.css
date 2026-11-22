@@ -1,4 +1,4 @@
-:root{--bg:#120d12;--panel:#1d151d;--ink:#f4ecf1;--muted:#b9a9b4;--pink:#ff5fa2;--line:#33262f}
+:root{--bg:#000;--panel:#1d151d;--ink:#f4ecf1;--muted:#b9a9b4;--pink:#ff5fa2;--line:#33262f}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 1.05rem/1.65 Inter,system-ui,sans-serif}
 a{color:var(--pink)}h1,h2,h3,.wordmark{font-family:"Archivo Black",Inter,sans-serif;line-height:1.1;letter-spacing:.01em}
