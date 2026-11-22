@@ -2,7 +2,7 @@
 """
 Build the Media Pig AF static site.
 
-    python3 build.py   -> writes index.html, about.html, contact.html
+    python3 build.py   -> writes index.html, about.html, shop.html, contact.html
 
 Edit the text here, rebuild, commit, push. GitHub Pages serves the result.
 """
@@ -16,6 +16,8 @@ WEB3FORMS_KEY = ""
 EMAIL_USER, EMAIL_DOMAIN = "", ""
 # Logo file in img/ (used if present; otherwise the name is set as text).
 LOGO = "img/logo.png"
+# Fourthwall shop address. Leave "" until the shop exists; the Shop page then says "coming soon".
+SHOP_URL = ""
 
 SERVICES = [
     ("Music production", "Quality recording and production, start to finish, with the care a record deserves."),
@@ -30,7 +32,7 @@ def esc(s):
     return html.escape(s, quote=True)
 
 
-NAV = [("index.html", "Home"), ("about.html", "About"), ("contact.html", "Contact")]
+NAV = [("index.html", "Home"), ("about.html", "About"), ("shop.html", "Shop"), ("contact.html", "Contact")]
 
 
 def page(filename, title, description, body):
@@ -50,7 +52,7 @@ def page(filename, title, description, body):
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="img/favicon.png" type="image/png">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -128,11 +130,23 @@ def build_contact():
 </section>"""
 
 
+def build_shop():
+    if SHOP_URL:
+        body = f'<p>Official Media Pig AF merch.</p><p><a class="btn" href="{esc(SHOP_URL)}" target="_blank" rel="noopener">Visit the shop</a></p>'
+    else:
+        body = '<p>Media Pig AF merch is on its way. Check back soon, or <a href="contact.html">send a note</a> and we will tell you when it opens.</p>'
+    return f"""<section class="page">
+  <h1>Shop</h1>
+  {body}
+</section>"""
+
+
 PAGES = [
     ("index.html", f"{NAME} | Music Production, Artist Development, Sync & Licensing",
      "Independent music production, artist development, and sync licensing in Nashville, Tennessee.", build_index),
     ("about.html", f"About | {NAME}",
      "About Media Pig AF, an independent music production and artist development company in Nashville.", build_about),
+    ("shop.html", f"Shop | {NAME}", "Media Pig AF merch.", build_shop),
     ("contact.html", f"Contact | {NAME}", "Contact Media Pig AF.", build_contact),
 ]
 
