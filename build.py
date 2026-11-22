@@ -49,6 +49,7 @@ def page(filename, title, description, body):
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" href="img/favicon.png" type="image/png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -72,11 +73,14 @@ def page(filename, title, description, body):
 def build_index():
     cards = "".join(f'<li><h3>{esc(t)}</h3><p>{esc(d)}</p></li>' for t, d in SERVICES)
     return f"""<section class="hero">
+  <div class="hero-text">
   <p class="kicker">Nashville, Tennessee</p>
   <h1>{esc(NAME)}</h1>
   <p class="tag">{esc(TAGLINE)}</p>
   <p class="lede">An independent music production and artist development company. We make original recordings, develop artists, and give finished work a longer life.</p>
   <p><a class="btn" href="contact.html">Get in touch</a> <a class="btn ghost" href="about.html">About us</a></p>
+  </div>
+  <img class="hero-art" src="img/logo.png" alt="A pig leaning on a guitar amp, the Media Pig AF logo" width="320">
 </section>
 <section class="band">
   <h2>What we do</h2>

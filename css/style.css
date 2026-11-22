@@ -25,3 +25,7 @@ input,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px 
 input:focus,textarea:focus{outline:2px solid var(--pink);outline-offset:1px}
 button.btn{justify-self:start}.form-status.ok{color:#8be28b}.form-status.err{color:#ff9a9a}
 .foot{border-top:1px solid var(--line);margin-top:3rem;padding:1.5rem clamp(1rem,5vw,3rem);color:var(--muted);font-size:.9rem}
+.hero{display:grid;grid-template-columns:1fr auto;gap:2rem;align-items:center}
+.hero-art{width:min(320px,100%);height:auto;border-radius:.6rem}
+.logo img{display:block;height:56px;width:auto}
+@media(max-width:46rem){.hero{grid-template-columns:1fr}.hero-art{order:-1;width:200px}}
