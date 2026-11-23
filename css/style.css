@@ -39,3 +39,4 @@ button.btn{justify-self:start}.form-status.ok{color:#8be28b}.form-status.err{col
 .fam-card h3 a:hover{color:var(--pink)}
 .fam-card p{margin:.5rem 1rem 0;color:var(--muted);font-size:.95rem;line-height:1.5}
 .lede{color:var(--muted)}
+.page:has(.fam-grid){max-width:64rem}
