@@ -7,6 +7,7 @@ Build the Media Pig AF static site.
 Edit the text here, rebuild, commit, push. GitHub Pages serves the result.
 """
 import html
+import os
 
 NAME = "Media Pig AF"
 TAGLINE = "Music Production • Artist Development • Sync & Licensing"
@@ -32,7 +33,7 @@ def esc(s):
     return html.escape(s, quote=True)
 
 
-NAV = [("index.html", "Home"), ("about.html", "About"), ("shop.html", "Shop"), ("contact.html", "Contact")]
+NAV = [("index.html", "Home"), ("about.html", "About"), ("shop.html", "Shop"), ("family.html", "Family"), ("contact.html", "Contact")]
 
 
 def page(filename, title, description, body):
@@ -52,7 +53,7 @@ def page(filename, title, description, body):
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="img/favicon.png" type="image/png">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=fam1">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -141,12 +142,38 @@ def build_shop():
 </section>"""
 
 
+SITE_ID = "media-pig-af"
+
+
+def build_family():
+    """Family page: cards for the other family sites, read from family.json."""
+    import json
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, "family.json"), encoding="utf-8") as fh:
+        data = json.load(fh)
+    cards = []
+    for f in data:
+        if f["id"] == SITE_ID:
+            continue
+        pic = ('<a class="fam-pic" href="%s" rel="noopener"><img src="%s" alt="%s" loading="lazy" '
+               'referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></a>'
+               % (esc(f["url"]), esc(f["image"]), esc(f["name"]))) if f.get("image") else ""
+        cards.append('<article class="fam-card">%s<h3><a href="%s" rel="noopener">%s</a></h3><p>%s</p></article>'
+                     % (pic, esc(f["url"]), esc(f["name"]), esc(f.get("blurb", ""))))
+    return '''<section class="page">
+  <h1>Family</h1>
+  <p class="lede">The artists and makers we have built websites for.</p>
+  <div class="fam-grid">%s</div>
+</section>''' % "".join(cards)
+
+
 PAGES = [
     ("index.html", f"{NAME} | Music Production, Artist Development, Sync & Licensing",
      "Independent music production, artist development, and sync licensing in Nashville, Tennessee.", build_index),
     ("about.html", f"About | {NAME}",
      "About Media Pig AF, an independent music production and artist development company in Nashville.", build_about),
     ("shop.html", f"Shop | {NAME}", "Media Pig AF merch.", build_shop),
+    ("family.html", f"Family | {NAME}", "The artists and makers in the Media Pig AF family of websites.", build_family),
     ("contact.html", f"Contact | {NAME}", "Contact Media Pig AF.", build_contact),
 ]
 
