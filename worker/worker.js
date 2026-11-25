@@ -42,19 +42,27 @@ async function mlc(env, path, body) {
 
 // ---- MusicBrainz (no login). Free API, CC0 data, limit 1 request/second, needs a descriptive User-Agent.
 const MB = "https://musicbrainz.org/ws/2";
-const MB_UA = "MediaPigAF-lookup-test/0.1";
+const MB_UA = "MediaPigAF-lookup-test/0.1 (https://mediapigaf.com)";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let lastMB = 0;
 
+// One MusicBrainz call: paced at ~1/second, and on 503/429 ("busy, slow down") it waits and retries up to 3 times.
 async function mb(path) {
-  const wait = lastMB + 1100 - Date.now();
-  if (wait > 0) await sleep(wait);
-  lastMB = Date.now();
   const sep = path.includes("?") ? "&" : "?";
-  const r = await fetch(`${MB}${path}${sep}fmt=json`, { headers: { "User-Agent": MB_UA, Accept: "application/json" } });
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`MusicBrainz ${path.split("?")[0]} returned ${r.status}`);
-  return r.json();
+  let status = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const wait = lastMB + 1100 - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastMB = Date.now();
+    const r = await fetch(`${MB}${path}${sep}fmt=json`, { headers: { "User-Agent": MB_UA, Accept: "application/json" } });
+    status = r.status;
+    if (r.status === 404) return null;
+    if (r.ok) return r.json();
+    if (r.status !== 503 && r.status !== 429) break;
+    const ra = parseInt(r.headers.get("Retry-After") || "", 10);
+    await sleep(Math.min(8000, (ra > 0 ? ra * 1000 : 2000 * (attempt + 1))));
+  }
+  throw new Error(`MusicBrainz ${path.split("?")[0].replace(/[0-9a-f-]{36}/, "{id}")} returned ${status}`);
 }
 
 async function lookupMB({ isrc, artist, title }) {
@@ -67,7 +75,8 @@ async function lookupMB({ isrc, artist, title }) {
     const j = await mb(`/recording?query=${encodeURIComponent(q)}&limit=5`);
     recs = (j && j.recordings) || [];
   }
-  recs = recs.slice(0, 3);
+  recs = recs.slice(0, 2);   // fewer recordings means fewer calls (each call costs about a second)
+  const warnings = [];
   const recordings = recs.map(r => ({
     id: r.id, title: r.title, isrc: isrc || "",
     artist: (r["artist-credit"] || []).map(a => (a.name || "") + (a.joinphrase || "")).join(""),
@@ -76,12 +85,17 @@ async function lookupMB({ isrc, artist, title }) {
 
   const works = [], seen = new Set();
   for (const r of recs) {
-    const full = await mb(`/recording/${r.id}?inc=work-rels`);
+    if (works.length) break;   // one work is enough; stop early to stay under MusicBrainz's limits
+    let full;
+    try { full = await mb(`/recording/${r.id}?inc=work-rels`); }
+    catch (e) { warnings.push(String(e.message || e)); continue; }
     for (const rel of (full && full.relations) || []) {
       const w = rel.work;
       if (!w || seen.has(w.id)) continue;
       seen.add(w.id);
-      const wf = await mb(`/work/${w.id}?inc=artist-rels`);
+      let wf;
+      try { wf = await mb(`/work/${w.id}?inc=artist-rels`); }
+      catch (e) { warnings.push(String(e.message || e)); continue; }
       const writers = [];
       for (const wr of ((wf && wf.relations) || [])) {
         if (!wr.artist || !["composer", "lyricist", "writer"].includes(wr.type)) continue;
@@ -94,8 +108,10 @@ async function lookupMB({ isrc, artist, title }) {
       }
       // IPIs live on the artist record; fetch for up to 4 writers (adds ~1 second each).
       for (const wtr of writers.slice(0, 4)) {
-        const a = await mb(`/artist/${wtr.writerId}`);
-        if (a && a.ipis && a.ipis.length) wtr.writerIPI = a.ipis.join(", ");
+        try {
+          const a = await mb(`/artist/${wtr.writerId}`);
+          if (a && a.ipis && a.ipis.length) wtr.writerIPI = a.ipis.join(", ");
+        } catch (e) { warnings.push(`IPI for ${wtr.writerName} not retrieved (${String(e.message || e)})`); }
       }
       works.push({
         primaryTitle: (wf && wf.title) || w.title, artists: [recordings[0] && recordings[0].artist].filter(Boolean),
@@ -104,7 +120,7 @@ async function lookupMB({ isrc, artist, title }) {
       });
     }
   }
-  return { demo: false, source: "musicbrainz", recordings, works };
+  return { demo: false, source: "musicbrainz", recordings, works, warnings };
 }
 
 async function lookup(env, { isrc, artist, title, source }) {
@@ -180,6 +196,7 @@ document.getElementById("f").addEventListener("submit",async e=>{
     if(!r.ok){out.innerHTML='<div class="card err">'+esc(d.error||"Lookup failed")+'</div>';return;}
   }catch(x){out.innerHTML='<div class="card err">'+esc(x.message)+'</div>';return;}
   let h=d.demo?'<p><span class="tag">DEMO DATA</span> <span class="note">Not real. Shows the layout only.</span></p>':'';
+  if(d.warnings&&d.warnings.length)h+='<div class="card err">Partial result. MusicBrainz was busy: '+d.warnings.map(esc).join('; ')+'. Try again in a minute.</div>';
   if(!d.works.length){h+='<div class="card">No match in The MLC database'+(d.recordings.length?' (recording found, but no work record came back).':'.')+' The song may be unreleased or unregistered.</div>';}
   d.works.forEach(w=>{
     h+='<div class="card"><h2 style="margin:0 0 4px">'+esc(w.primaryTitle)+'</h2>'
