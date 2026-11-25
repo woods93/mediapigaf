@@ -1,0 +1,6 @@
+name = "mlc-lookup-test"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+DEMO = "1"   # applies to the MLC source only; set to "0" once MLC_USER and MLC_PASS secrets exist
