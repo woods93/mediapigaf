@@ -183,9 +183,16 @@ async function lookupAuto(env, { isrc, artist, title }) {
 
   if (!code) {
     try {
-      const s = await dz(`/search?q=${encodeURIComponent(`artist:"${clean(artist)}" track:"${clean(title)}"`)}&limit=3`);
-      const hit = s && s.data && s.data[0];
-      if (!hit) trail.push("Deezer: no recording found for that artist and title");
+      let s = await dz(`/search?q=${encodeURIComponent(`artist:"${clean(artist)}" track:"${clean(title)}"`)}&limit=3`);
+      let hit = s && s.data && s.data[0];
+      if (!hit) {
+        // Looser second try: plain words, then keep the first result whose title and artist both look right.
+        const norm = x => String(x || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+        s = await dz(`/search?q=${encodeURIComponent(`${clean(artist)} ${clean(title)}`)}&limit=10`);
+        hit = ((s && s.data) || []).find(t => norm(t.title).includes(norm(title)) && norm(t.artist && t.artist.name).includes(norm(artist)));
+        if (hit) trail.push("Deezer: strict search found nothing; a looser search found a match");
+      }
+      if (!hit) trail.push("Deezer: no recording found for that artist and title (strict and loose searches)");
       else {
         const full = await dz(`/track/${hit.id}`);
         if (full) {
