@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Send us your song | Media Pig AF</title>
+<style>
+:root{--bg:#222527;--card:#2b2e31;--line:#3a3d40;--text:#e8e6e1;--bronze:#b8935a;--mute:#9a978f;--bad:#e07a6a;--ok:#8fbf8f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif;padding:24px}
+main{max-width:800px;margin:0 auto}
+h1{font-weight:600;color:var(--bronze);margin:0 0 4px}
+h2{font-size:18px;margin:0 0 4px;color:var(--bronze);font-weight:600}
+p.sub{color:var(--mute);margin:0 0 16px}
+section,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px;margin:16px 0}
+.hint{color:var(--mute);font-size:14px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 14px}
+.fld{position:relative;margin:8px 0}
+.fld label{display:block;margin:0 0 4px;color:var(--mute);font-size:14px}
+input,select,textarea{width:100%;padding:10px;border-radius:6px;border:1px solid #444;background:#1c1e20;color:var(--text);font:inherit}
+textarea{min-height:90px;resize:vertical}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--bronze);outline-offset:1px}
+.fld.fl input,.fld.fl select{border-color:var(--bronze)}
+.fld.fl::after{content:"from lookup, please confirm";display:block;margin-top:3px;font-size:12px;color:var(--bronze)}
+.fld.bad input,.fld.bad select{border-color:var(--bad)}
+.err{color:var(--bad);font-size:13px;min-height:0;margin-top:3px}
+button{padding:10px 20px;border:0;border-radius:6px;background:var(--bronze);color:#1c1e20;font-weight:600;font-size:16px;cursor:pointer}
+button.ghost{background:transparent;color:var(--text);border:1px solid #555;padding:6px 12px;font-size:14px;font-weight:500}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin:10px 0;background:#262a2c}
+.row .top{display:flex;justify-content:space-between;align-items:center;color:var(--mute);font-size:14px}
+.drop{border:2px dashed #555;border-radius:8px;padding:16px;margin:10px 0;text-align:center;color:var(--mute)}
+.drop.over{border-color:var(--bronze);background:#2f2d28}
+.drop.bad{border-color:var(--bad)}
+.drop .name{color:var(--text);font-weight:600;word-break:break-all}
+.drop .ok{color:var(--ok)}
+progress{width:100%;height:10px;margin-top:8px}
+#banner{display:none;border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:12px;margin:16px 0}
+.total{font-size:14px;color:var(--mute)}
+.total.bad{color:var(--bad)}
+ul.items{padding-left:20px;margin:6px 0}
+.pill{display:inline-block;font-size:12px;border-radius:99px;padding:1px 8px;margin-right:6px;border:1px solid}
+.pill.needed{color:var(--bad)} .pill.recommended{color:var(--bronze)} .pill.info{color:var(--mute)}
+.chk{display:flex;gap:8px;align-items:center;margin:8px 0}.chk input{width:auto}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Send us your song</h1>
+  <p class="sub" id="who">Checking your link…</p>
+  <noscript><div class="card">This page needs JavaScript to upload files.</div></noscript>
+  <div id="banner" role="alert"></div>
+  <div id="app" class="hidden"></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  window.tsReady = function () {};   // Turnstile calls this when it loads; build() mounts the widget itself
+
+  // ---------- helpers ----------
+  function h(tag, attrs) {
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (k === "class") e.className = v;
+      else if (k === "text") e.textContent = v;
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
+      else if (v === true) e.setAttribute(k, "");
+      else if (v !== false && v != null) e.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) {
+      [].concat(arguments[i]).forEach(function (c) {
+        if (c == null || c === false) return;
+        e.append(c.nodeType ? c : document.createTextNode(String(c)));
+      });
+    }
+    return e;
+  }
+  var $ = function (s) { return document.querySelector(s); };
+  var uid = 0;
+
+  var token = new URLSearchParams(location.search).get("t");
+  try {
+    if (token) { sessionStorage.setItem("inv", token); history.replaceState(null, "", location.pathname); }
+    else token = sessionStorage.getItem("inv");
+  } catch (e) { /* storage blocked: the token stays in memory for this page load */ }
+
+  function req(path, o) {
+    o = o || {};
+    var headers = { Authorization: "Bearer " + token };
+    var body = o.body;
+    if (body && !o.raw) { body = JSON.stringify(body); headers["Content-Type"] = "application/json"; }
+    return fetch(path, { method: o.method || "GET", headers: headers, body: body }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) { var e = new Error(j.error || "Something went wrong (" + r.status + ")."); e.status = r.status; e.errors = j.errors; throw e; }
+        return j;
+      });
+    });
+  }
+
+  function banner(msg) { var b = $("#banner"); b.textContent = msg; b.style.display = msg ? "block" : "none"; if (msg) b.scrollIntoView({ block: "center" }); }
+
+  // ---------- constants (the server repeats every check) ----------
+  var PROS = [["", "Choose…"], ["ASCAP", "ASCAP"], ["BMI", "BMI"], ["SESAC", "SESAC"], ["GMR", "GMR"], ["SOCAN", "SOCAN"], ["PRS", "PRS"], ["OTHER", "Other"], ["NONE", "None / not sure"]];
+  var ROLES = ["", "Composer/Lyricist", "Composer", "Lyricist", "Arranger", "Other"];
+  var MAX = 100 * 1024 * 1024;
+  var KINDS = {
+    proof: { label: "Proof of publishing", hint: "A PDF or screenshot from your PRO or publisher showing the song is registered. PDF, PNG or JPG.", exts: { pdf: ["pdf"], png: ["png"], jpeg: ["jpg", "jpeg"] } },
+    master_print: { label: "Master print", hint: "Your final mix. WAV, MP3, FLAC or AIFF.", exts: { wav: ["wav"], mp3: ["mp3"], flac: ["flac"], aiff: ["aif", "aiff"] } },
+    master_instrumental: { label: "Master instrumental", hint: "The final mix without vocals. WAV, MP3, FLAC or AIFF.", exts: { wav: ["wav"], mp3: ["mp3"], flac: ["flac"], aiff: ["aif", "aiff"] } }
+  };
+
+  function ascii(b, from, s) { for (var i = 0; i < s.length; i++) if (b[from + i] !== s.charCodeAt(i)) return false; return true; }
+  function detect(b) {
+    if (b.length < 4) return null;
+    if (ascii(b, 0, "%PDF-")) return "pdf";
+    if (b[0] === 0x89 && ascii(b, 1, "PNG")) return "png";
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg";
+    if (b.length >= 12 && ascii(b, 0, "RIFF") && ascii(b, 8, "WAVE")) return "wav";
+    if (b.length >= 12 && ascii(b, 0, "FORM") && (ascii(b, 8, "AIFF") || ascii(b, 8, "AIFC"))) return "aiff";
+    if (ascii(b, 0, "fLaC")) return "flac";
+    if (ascii(b, 0, "ID3")) return "mp3";
+    if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0 && ((b[1] >> 1) & 3) !== 0 && ((b[1] >> 3) & 3) !== 1) return "mp3";
+    return null;
+  }
+  function checkFile(kind, file) {
+    var k = KINDS[kind];
+    if (!file.size) return Promise.resolve("That file is empty.");
+    if (file.size > MAX) return Promise.resolve("That file is " + (file.size / 1048576).toFixed(1) + " MB. The limit is " + (MAX / 1048576) + " MB.");
+    var ext = (file.name.split(".").pop() || "").toLowerCase();
+    var all = [].concat.apply([], Object.keys(k.exts).map(function (t) { return k.exts[t]; }));
+    if (all.indexOf(ext) < 0) return Promise.resolve(k.label + " must be one of: " + all.join(", ") + ".");
+    return file.slice(0, 32).arrayBuffer().then(function (buf) {
+      var t = detect(new Uint8Array(buf));
+      if (!t || !k.exts[t]) return "That file's contents don't look like a real " + all.join("/") + " file.";
+      if (k.exts[t].indexOf(ext) < 0) return "That file is named ." + ext + " but its contents are " + t + ". Please check you chose the right file.";
+      return "";
+    });
+  }
+  function size(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
+  function ipiOk(v) { return /^\d{9,11}$/.test(v.replace(/[\s.\-]/g, "")); }
+
+  // ---------- form building ----------
+  var fields = {};   // name -> {box, input, err}
+  function field(label, name, opts) {
+    opts = opts || {};
+    var id = "f" + (++uid), input;
+    if (opts.options) {
+      input = h("select", { id: id }, opts.options.map(function (o) { return h("option", { value: o[0], text: o[1] }); }));
+    } else if (opts.area) {
+      input = h("textarea", { id: id });
+    } else {
+      input = h("input", { id: id, type: opts.type || "text", autocomplete: "off", placeholder: opts.placeholder || "", maxlength: opts.max || 200, inputmode: opts.inputmode || null });
+      if (opts.step) input.setAttribute("step", opts.step);
+      if (opts.type === "number") { input.setAttribute("min", "0"); input.setAttribute("max", "100"); }
+    }
+    var err = h("div", { class: "err" });
+    var box = h("div", { class: "fld" }, h("label", { for: id, text: label }), input, err);
+    input.addEventListener("input", function () { box.classList.remove("fl"); box.classList.remove("bad"); err.textContent = ""; });
+    fields[name] = { box: box, input: input, err: err };
+    return box;
+  }
+  function setErr(name, msg) { var f = fields[name]; if (!f) return false; f.box.classList.add("bad"); f.err.textContent = msg; return true; }
+  function clearErrs() { Object.keys(fields).forEach(function (k) { fields[k].box.classList.remove("bad"); fields[k].err.textContent = ""; }); }
+  function put(name, value, fromLookup) {
+    var f = fields[name];
+    if (!f || !value || f.input.value.trim()) return false;
+    f.input.value = value;
+    if (fromLookup) f.box.classList.add("fl");
+    return true;
+  }
+
+  var writerRows = [], pubRows = [];
+  function rowBlock(list, holder, kind) {
+    var n = list.length;
+    var prefix = kind + "." + n + ".";
+    var row = { prefix: prefix };
+    var box = h("div", { class: "row" });
+    var top = h("div", { class: "top" }, h("span", { text: (kind === "writers" ? "Songwriter " : "Publisher ") + (live(list).length + 1) }));
+    var rm = h("button", { type: "button", class: "ghost", text: "Remove", onclick: function () {
+      if (list.filter(function (r) { return !r.removed; }).length <= (kind === "writers" ? 1 : 0)) return;
+      row.removed = true; box.remove(); totals();
+    } });
+    top.append(rm);
+    var g = h("div", { class: "grid" },
+      field(kind === "writers" ? "Name" : "Publisher name", prefix + "name"),
+      field("IPI number", prefix + "ipi", { inputmode: "numeric", max: 20, placeholder: "9 to 11 digits" }),
+      field("PRO", prefix + "pro", { options: PROS }),
+      kind === "writers" ? field("Role", prefix + "role", { options: ROLES.map(function (r) { return [r, r || "Choose…"]; }) }) : null,
+      field("Share %", prefix + "share_pct", { type: "number", step: "0.01", max: 6 }));
+    box.append(top, g);
+    holder.append(box);
+    row.box = box;
+    list.push(row);
+    fields[prefix + "share_pct"].input.addEventListener("input", totals);
+    return row;
+  }
+  function val(name) { return fields[name].input.value.trim(); }
+  function live(list) { return list.filter(function (r) { return !r.removed; }); }
+  function collectRows(list, keys) {
+    return live(list).map(function (r) { var o = {}; keys.forEach(function (k) { o[k] = val(r.prefix + k); }); return o; });
+  }
+  var wTotal, pTotal;
+  function totals() {
+    [[wTotal, writerRows], [pTotal, pubRows]].forEach(function (p) {
+      var rows = live(p[1]).filter(function (r) { return val(r.prefix + "share_pct") !== ""; });
+      var s = rows.reduce(function (a, r) { return a + (Number(val(r.prefix + "share_pct")) || 0); }, 0);
+      p[0].textContent = rows.length ? "Shares add up to " + (Math.round(s * 100) / 100) + "%" + (Math.abs(s - 100) < 0.01 ? "" : " (should be 100%)") : "";
+      p[0].className = "total" + (rows.length && Math.abs(s - 100) >= 0.01 ? " bad" : "");
+    });
+  }
+
+  // ---------- files ----------
+  var files = {};  // kind -> {file, ok, done, error}
+  var zones = {};
+  function zone(kind) {
+    var k = KINDS[kind];
+    var input = h("input", { type: "file", class: "hidden", "aria-label": k.label });
+    var info = h("div", { class: "name" });
+    var msg = h("div");
+    var bar = h("progress", { class: "hidden", max: "100", value: "0" });
+    var pick = h("button", { type: "button", class: "ghost", text: "Choose file" });
+    var el = h("div", { class: "drop" }, h("div", { text: k.label, style: "color:#e8e6e1;font-weight:600" }), h("div", { class: "hint", text: k.hint }), info, msg, bar, h("div", {}, pick), input);
+    function take(f) {
+      if (!f) return;
+      files[kind] = { file: f, ok: false };
+      info.textContent = f.name + " (" + size(f.size) + ")";
+      msg.textContent = "Checking…"; msg.className = ""; el.classList.remove("bad");
+      checkFile(kind, f).then(function (e) {
+        if (e) { files[kind].error = e; msg.textContent = e; msg.className = "err"; el.classList.add("bad"); }
+        else { files[kind].ok = true; msg.textContent = "Looks good. It uploads when you press Send."; msg.className = "ok"; }
+      });
+    }
+    pick.addEventListener("click", function () { input.click(); });
+    input.addEventListener("change", function () { take(input.files[0]); });
+    ["dragenter", "dragover"].forEach(function (ev) { el.addEventListener(ev, function (e) { e.preventDefault(); el.classList.add("over"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { el.addEventListener(ev, function (e) { e.preventDefault(); el.classList.remove("over"); }); });
+    el.addEventListener("drop", function (e) { take(e.dataTransfer.files[0]); });
+    zones[kind] = { el: el, msg: msg, bar: bar, pick: pick, take: take };
+    return el;
+  }
+
+  function upload(songId, kind) {
+    var f = files[kind], z = zones[kind];
+    z.bar.classList.remove("hidden"); z.bar.value = 0; z.msg.className = ""; z.msg.textContent = "Uploading…";
+    return req("/api/songs/" + songId + "/files", { method: "POST", body: { kind: kind, name: f.file.name, size: f.file.size } }).then(function (st) {
+      var n = 0;
+      function next() {
+        n++;
+        if (n > st.parts) return req("/api/songs/" + songId + "/files/" + st.file_id + "/complete", { method: "POST" });
+        var blob = f.file.slice((n - 1) * st.chunk_bytes, Math.min(n * st.chunk_bytes, f.file.size));
+        return put(n, blob).then(function () { z.bar.value = Math.round(100 * n / st.parts); return next(); });
+      }
+      function put(num, blob, tries) {
+        tries = tries || 0;
+        return req("/api/songs/" + songId + "/files/" + st.file_id + "/parts/" + num, { method: "PUT", body: blob, raw: true }).catch(function (e) {
+          if (!e.status && tries < 3) return new Promise(function (r) { setTimeout(r, 1500 * (tries + 1)); }).then(function () { return put(num, blob, tries + 1); });
+          if (e.status >= 500 && tries < 3) return new Promise(function (r) { setTimeout(r, 1500 * (tries + 1)); }).then(function () { return put(num, blob, tries + 1); });
+          throw e;
+        });
+      }
+      return next();
+    }).then(function () { f.done = true; z.msg.textContent = "Uploaded."; z.msg.className = "ok"; z.pick.disabled = true; });
+  }
+
+  // ---------- lookup ----------
+  var ROLE_MAP = { "Composer / Lyricist": "Composer/Lyricist", "Composer / Author": "Composer/Lyricist", "Composer": "Composer", "Author / Lyricist": "Lyricist", "Author": "Lyricist" };
+  var lookupOut;
+  // The MLC stores titles and names in capitals. Turn those into normal capitalisation (the artist confirms them anyway).
+  function tidy(t) {
+    t = String(t || "");
+    return (t === t.toUpperCase() && /[A-Z]/.test(t)) ? t.toLowerCase().replace(/(^|[\s(\-"])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }) : t;
+  }
+  function runLookup() {
+    var isrc = $("#lk-isrc").value.trim(), artist = $("#lk-artist").value.trim(), title = $("#lk-title").value.trim();
+    lookupOut.textContent = "Looking…"; lookupOut.className = "hint";
+    $("#lk-go").disabled = true;
+    req("/api/lookup", { method: "POST", body: { isrc: isrc, artist: artist, title: title } }).then(function (d) {
+      var w = (d.works || [])[0], r = (d.recordings || [])[0];
+      if (!w && !r) { lookupOut.textContent = "We couldn't find that song. No problem. Fill in the form below by hand."; return; }
+      var filled = 0;
+      function f(name, v) { if (put(name, v, true)) filled++; }
+      f("title", tidy((r && r.title) || (w && w.primaryTitle)));
+      f("artist", (r && r.artist) || (w && w.artists && w.artists[0]));
+      f("isrc", (r && r.isrc) || (isrc && isrc.toUpperCase().replace(/[\s-]/g, "")));
+      if (w) { f("iswc", w.iswc); f("mlc_song_code", w.mlcSongCode); }
+      var note = "";
+      if (w && w.writers && w.writers.length) {
+        var blank = live(writerRows).every(function (x) { return !val(x.prefix + "name") && !val(x.prefix + "ipi"); });
+        if (blank) {
+          live(writerRows).forEach(function (x) { x.removed = true; x.box.remove(); });
+          w.writers.slice(0, 10).forEach(function (wr) {
+            var row = rowBlock(writerRows, $("#writers"), "writers");
+            put(row.prefix + "name", tidy(wr.writerName), true); put(row.prefix + "ipi", wr.writerIPI, true);
+            put(row.prefix + "role", ROLE_MAP[wr.writerRoleCode] || "", true); filled++;
+          });
+        } else note += " Songwriters were left alone because you've already entered some.";
+      }
+      if (w && w.publishers && w.publishers.length) {
+        var pblank = live(pubRows).every(function (x) { return !val(x.prefix + "name") && !val(x.prefix + "ipi"); });
+        if (pblank) {
+          live(pubRows).forEach(function (x) { x.removed = true; x.box.remove(); });
+          w.publishers.slice(0, 10).forEach(function (p) {
+            var row = rowBlock(pubRows, $("#pubs"), "publishers");
+            put(row.prefix + "name", tidy(p.publisherName), true); put(row.prefix + "ipi", p.publisherIpiNumber, true); filled++;
+          });
+        } else note += " Publishers were left alone because you've already entered some.";
+      }
+      totals();
+      var hasWriters = w && w.writers && w.writers.length;
+      lookupOut.textContent = (hasWriters ? "Found it, with songwriter details." : "Found the recording, but no songwriter details are on file for it.") +
+        " Filled in " + filled + " item" + (filled === 1 ? "" : "s") + ". Everything marked “from lookup” is a suggestion. Please check it against your own paperwork." + note +
+        (d.attribution ? " " + d.attribution.text : "");
+    }).catch(function (e) { lookupOut.textContent = e.message; })
+      .then(function () { $("#lk-go").disabled = false; });
+  }
+
+  // ---------- submit ----------
+  var state = { songId: null };
+  var sendBtn;
+  function lockFields(on) {
+    Object.keys(fields).forEach(function (k) { fields[k].input.disabled = on; });
+    $("#self-pub").disabled = on;
+  }
+  function collect() {
+    return {
+      title: val("title"), artist: val("artist"), isrc: val("isrc"), iswc: val("iswc"), mlc_song_code: val("mlc_song_code"),
+      pro: val("pro"), pro_work_code: val("pro_work_code"), self_published: $("#self-pub").checked, notes: val("notes"),
+      writers: collectRows(writerRows, ["name", "ipi", "pro", "role", "share_pct"]),
+      publishers: collectRows(pubRows, ["name", "ipi", "pro", "share_pct"]),
+      turnstile: (document.querySelector('[name="cf-turnstile-response"]') || {}).value || ""
+    };
+  }
+  function quickChecks(p) {
+    var bad = 0;
+    function e(n, m) { setErr(n, m); bad++; }
+    if (!p.title) e("title", "Song title is required.");
+    if (!p.artist) e("artist", "Artist name is required.");
+    if (!live(writerRows).some(function (r) { return val(r.prefix + "name"); })) e(live(writerRows)[0].prefix + "name", "Add at least one songwriter.");
+    live(writerRows).concat(live(pubRows)).forEach(function (r) { var v = val(r.prefix + "ipi"); if (v && !ipiOk(v)) e(r.prefix + "ipi", "An IPI is 9 to 11 digits."); });
+    Object.keys(files).forEach(function (k) { if (!files[k].ok && !files[k].done) { bad++; zones[k].el.classList.add("bad"); if (!files[k].error) zones[k].msg.textContent = "Still checking this file. Try again in a moment."; } });
+    return bad;
+  }
+  function serverErrors(list) {
+    var other = [];
+    list.forEach(function (x) {
+      // The server numbers rows among the non-removed ones in order; map back to our field names.
+      var m = /^(writers|publishers)\.(\d+)\.(\w+)$/.exec(x.field);
+      if (m) { var r = live(m[1] === "writers" ? writerRows : pubRows)[Number(m[2])]; if (r && setErr(r.prefix + m[3], x.message)) return; }
+      if (!setErr(x.field, x.message)) other.push(x.message);
+    });
+    banner(list.length === 1 ? "There's one thing to fix below." : "There are a few things to fix below.");
+    if (other.length) banner(other.join(" "));
+  }
+  function go() {
+    banner(""); clearErrs();
+    var p = collect();
+    if (quickChecks(p)) { banner("Please fix the items marked in red."); return; }
+    sendBtn.disabled = true; sendBtn.textContent = "Sending…";
+    var steps = Promise.resolve();
+    if (!state.songId) {
+      steps = req("/api/songs", { method: "POST", body: p }).then(function (r) { state.songId = r.id; lockFields(true); });
+    }
+    steps.then(function () {
+      var chain = Promise.resolve();
+      Object.keys(KINDS).forEach(function (k) {
+        if (files[k] && files[k].ok && !files[k].done) chain = chain.then(function () { return upload(state.songId, k).catch(function (e) { zones[k].msg.textContent = e.message; zones[k].msg.className = "err"; zones[k].el.classList.add("bad"); files[k].ok = false; files[k].error = e.message; throw e; }); });
+      });
+      return chain;
+    }).then(function () { return req("/api/songs/" + state.songId + "/submit", { method: "POST" }); })
+      .then(done)
+      .catch(function (e) {
+        if (e.errors) serverErrors(e.errors); else banner(e.message);
+        if (window.turnstile && !state.songId) { try { window.turnstile.reset(); } catch (x) { /* widget not mounted */ } }
+        sendBtn.disabled = false; sendBtn.textContent = state.songId ? "Try again" : "Send my song";
+      });
+  }
+  function done(r) {
+    var groups = { needed: "Still needed", recommended: "Worth adding when you can", info: "Good to know" };
+    var app = $("#app"); app.textContent = "";
+    var card = h("div", { class: "card" }, h("h2", { text: "Got it. Thank you." }), h("p", { text: "Your song is in. We'll review it and be in touch if anything else is needed." }));
+    Object.keys(groups).forEach(function (lv) {
+      var items = r.items.filter(function (i) { return i.level === lv; });
+      if (!items.length) return;
+      card.append(h("div", { style: "margin-top:12px" }, h("span", { class: "pill " + lv, text: groups[lv] }), h("ul", { class: "items" }, items.map(function (i) { return h("li", { text: i.text }); }))));
+    });
+    card.append(h("p", {}, h("button", { type: "button", text: "Add another song", onclick: function () { location.reload(); } })));
+    app.append(card); card.scrollIntoView();
+  }
+
+  // ---------- page ----------
+  function build(inv) {
+    $("#who").textContent = "For " + inv.artist_name + ". Fill in what you can. You can check everything before you send.";
+    var app = $("#app");
+    var lk = h("section", {},
+      h("h2", { text: "1. Find your song (optional)" }),
+      h("p", { class: "hint", text: "Enter your ISRC, or the artist and title, and we'll try to fill in the form for you. You can still change everything." }),
+      h("div", { class: "grid" },
+        h("div", { class: "fld" }, h("label", { for: "lk-isrc", text: "ISRC" }), h("input", { id: "lk-isrc", maxlength: 20, autocomplete: "off", placeholder: "USRC17607839" })),
+        h("div", { class: "fld" }, h("label", { for: "lk-artist", text: "Artist" }), h("input", { id: "lk-artist", maxlength: 200, autocomplete: "off" })),
+        h("div", { class: "fld" }, h("label", { for: "lk-title", text: "Title" }), h("input", { id: "lk-title", maxlength: 200, autocomplete: "off" }))),
+      h("button", { type: "button", id: "lk-go", text: "Look up my song", onclick: runLookup }),
+      (lookupOut = h("p", { class: "hint", role: "status", style: "margin-top:10px" })));
+    var details = h("section", {}, h("h2", { text: "2. The song" }),
+      h("div", { class: "grid" }, field("Song title *", "title"), field("Artist *", "artist"), field("ISRC", "isrc", { max: 20, placeholder: "12 characters" }),
+        field("ISWC", "iswc", { max: 20, placeholder: "T-123.456.789-0" }), field("MLC song code", "mlc_song_code", { max: 20 })));
+    var pro = h("section", {}, h("h2", { text: "3. Performing rights" }),
+      h("div", { class: "grid" }, field("PRO for this song", "pro", { options: PROS }), field("PRO work code or registration number", "pro_work_code", { max: 60 })));
+    var writers = h("section", {}, h("h2", { text: "4. Songwriters" }), h("p", { class: "hint", text: "Everyone who wrote the words or the music." }),
+      h("div", { id: "writers" }), (wTotal = h("div", { class: "total" })),
+      h("button", { type: "button", class: "ghost", text: "+ Add a songwriter", onclick: function () { rowBlock(writerRows, $("#writers"), "writers"); } }));
+    var pubs = h("section", {}, h("h2", { text: "5. Publishers" }),
+      h("div", { class: "chk" }, h("input", { type: "checkbox", id: "self-pub" }), h("label", { for: "self-pub", text: "Self-published (no outside publisher)" })),
+      h("div", { id: "pubs" }), (pTotal = h("div", { class: "total" })),
+      h("button", { type: "button", class: "ghost", text: "+ Add a publisher", onclick: function () { rowBlock(pubRows, $("#pubs"), "publishers"); } }));
+    var fl = h("section", {}, h("h2", { text: "6. Files" }),
+      h("p", { class: "hint", text: "Up to " + inv.max_file_mb + " MB each. Drag a file onto a box, or choose one. Nothing is sent until you press Send." }),
+      Object.keys(KINDS).map(zone));
+    var notes = h("section", {}, h("h2", { text: "7. Anything else?" }), field("Notes", "notes", { area: true }));
+    sendBtn = h("button", { type: "button", text: "Send my song", onclick: go });
+    var sk = (document.querySelector('meta[name="ts-sitekey"]') || {}).content;
+    var slot = sk ? h("div", { id: "ts-slot", style: "margin-bottom:12px" }) : null;
+    app.append(lk, details, pro, writers, pubs, fl, notes, h("section", {}, slot, sendBtn));
+    function mountTs() { if (slot && window.turnstile) window.turnstile.render(slot, { sitekey: sk }); }
+    if (slot) { if (window.turnstile) mountTs(); else window.tsReady = mountTs; }
+    fields.notes.input.setAttribute("maxlength", "5000");
+    rowBlock(writerRows, $("#writers"), "writers");
+    app.classList.remove("hidden");
+  }
+
+  // A file dropped outside a box would make the browser open it and leave the page.
+  ["dragover", "drop"].forEach(function (ev) { window.addEventListener(ev, function (e) { e.preventDefault(); }); });
+
+  if (!token) { $("#who").textContent = "This page needs the private link we sent you. Please use that link, or ask for a new one."; }
+  else req("/api/invite").then(build).catch(function (e) { $("#who").textContent = e.message; });
+})();
+</script>
+<!--TURNSTILE-->
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin | Media Pig AF uploads</title>
+<style>
+:root{--bg:#222527;--card:#2b2e31;--line:#3a3d40;--text:#e8e6e1;--bronze:#b8935a;--mute:#9a978f;--bad:#e07a6a;--ok:#8fbf8f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif;padding:20px}
+main{max-width:1100px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+h1{font-weight:600;color:var(--bronze);margin:0}
+h2{font-size:17px;color:var(--bronze);margin:0 0 8px;font-weight:600}
+.mute{color:var(--mute)}
+nav{display:flex;gap:6px;margin:14px 0}
+nav button{background:transparent;color:var(--text);border:1px solid #555;padding:6px 14px;border-radius:6px;font:inherit;cursor:pointer}
+nav button.on{background:var(--bronze);color:#1c1e20;border-color:var(--bronze);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin:14px 0}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:500;font-size:13px}
+tr.click{cursor:pointer}tr.click:hover{background:#31353a}
+input,select,textarea{padding:8px;border-radius:6px;border:1px solid #444;background:#1c1e20;color:var(--text);font:inherit}
+textarea{width:100%;min-height:70px}
+button.b{padding:8px 16px;border:0;border-radius:6px;background:var(--bronze);color:#1c1e20;font-weight:600;font:inherit;font-weight:600;cursor:pointer}
+button.g{background:transparent;color:var(--text);border:1px solid #555;padding:5px 10px;border-radius:6px;font:inherit;font-size:13px;cursor:pointer}
+button.d{background:transparent;color:var(--bad);border:1px solid var(--bad);padding:5px 10px;border-radius:6px;font:inherit;font-size:13px;cursor:pointer}
+.pill{display:inline-block;font-size:12px;border-radius:99px;padding:1px 9px;border:1px solid;white-space:nowrap}
+.needed{color:var(--bad)}.recommended{color:var(--bronze)}.info{color:var(--mute)}.ok{color:var(--ok)}
+.s-submitted{color:var(--bronze)}.s-accepted{color:var(--ok)}.s-needs_info{color:var(--bad)}.s-draft{color:var(--mute)}.s-in_review{color:#8fb4d8}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.kv{display:grid;grid-template-columns:180px 1fr;gap:3px 12px}.kv div:nth-child(odd){color:var(--mute)}
+#msg{display:none;border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:10px;margin:10px 0}
+code.link{display:block;word-break:break-all;background:#1c1e20;padding:10px;border-radius:6px;margin:8px 0}
+details summary{cursor:pointer;color:var(--mute)}
+audio{width:100%;margin-top:6px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Song uploads</h1><span class="mute" id="me"></span></header>
+  <nav><button id="t-songs" class="on">Submissions</button><button id="t-inv">Invites</button></nav>
+  <div id="msg" role="alert"></div>
+  <div id="v-songs"></div>
+  <div id="v-inv" class="hidden"></div>
+</main>
+<script>
+(function () {
+  "use strict";
+  function h(tag, attrs) {
+    var e = document.createElement(tag); attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (k === "class") e.className = v; else if (k === "text") e.textContent = v;
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
+      else if (v === true) e.setAttribute(k, ""); else if (v !== false && v != null) e.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) [].concat(arguments[i]).forEach(function (c) { if (c == null || c === false) return; e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+    return e;
+  }
+  var $ = function (s) { return document.querySelector(s); };
+  function api(path, o) {
+    o = o || {};
+    var headers = {};
+    if (o.body) { headers["Content-Type"] = "application/json"; headers["X-Admin"] = "1"; }
+    return fetch(path, { method: o.method || "GET", headers: headers, body: o.body ? JSON.stringify(o.body) : undefined }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || "Error " + r.status); return j; });
+    });
+  }
+  function msg(t) { var m = $("#msg"); m.textContent = t || ""; m.style.display = t ? "block" : "none"; }
+  var when = function (iso) { return iso ? new Date(iso).toLocaleString() : ""; };
+  var STATUS = { draft: "Draft", submitted: "Submitted", in_review: "In review", needs_info: "Needs info", accepted: "Accepted" };
+  var mb = function (n) { return n == null ? "" : n < 1048576 ? Math.max(1, Math.round(n / 1024)) + " KB" : (n / 1048576).toFixed(1) + " MB"; };
+  var KIND = { proof: "Proof of publishing", master_print: "Master print", master_instrumental: "Master instrumental" };
+
+  // ----- submissions -----
+  var filter = "";
+  function loadSongs() {
+    var box = $("#v-songs"); box.textContent = "Loading…";
+    api("/admin/api/songs").then(function (rows) {
+      box.textContent = "";
+      var sel = h("select", { onchange: function () { filter = sel.value; loadSongs(); } }, [["", "All statuses"]].concat(Object.keys(STATUS).map(function (k) { return [k, STATUS[k]]; })).map(function (o) { return h("option", { value: o[0], text: o[1], selected: o[0] === filter }); }));
+      var list = rows.filter(function (r) { return !filter || r.status === filter; });
+      var tbl = h("table", {}, h("thead", {}, h("tr", {}, ["Song", "Artist", "ISRC", "Status", "Open items", "Received"].map(function (t) { return h("th", { text: t }); }))),
+        h("tbody", {}, list.map(function (r) {
+          return h("tr", { class: "click", onclick: function () { openSong(r.id); } },
+            h("td", { text: r.title }), h("td", { text: r.artist }), h("td", { text: r.isrc || "" }),
+            h("td", {}, h("span", { class: "pill s-" + r.status, text: STATUS[r.status] || r.status })),
+            h("td", {}, r.needed ? h("span", { class: "pill needed", text: r.needed + " needed" }) : h("span", { class: "ok", text: "none needed" }), r.recommended ? h("span", { class: "mute", text: "  + " + r.recommended + " suggested" }) : ""),
+            h("td", { text: when(r.submitted_at || r.created_at) }));
+        })));
+      box.append(h("div", { class: "card" }, h("div", { class: "row", style: "margin-bottom:10px" }, sel, h("button", { class: "g", text: "Refresh", onclick: loadSongs }), h("span", { class: "mute", text: list.length + " song" + (list.length === 1 ? "" : "s") })),
+        list.length ? tbl : h("p", { class: "mute", text: "Nothing here yet." })), h("div", { id: "detail" }));
+    }).catch(function (e) { box.textContent = ""; msg(e.message); });
+  }
+
+  function table(cols, rows) {
+    if (!rows.length) return h("p", { class: "mute", text: "None" });
+    return h("table", {}, h("thead", {}, h("tr", {}, cols.map(function (c) { return h("th", { text: c[0] }); }))), h("tbody", {}, rows.map(function (r) { return h("tr", {}, cols.map(function (c) { var v = r[c[1]]; return h("td", { text: v == null ? "" : v }); })); })));
+  }
+
+  function openSong(id) {
+    var d = $("#detail"); d.textContent = "Loading…";
+    api("/admin/api/songs/" + id).then(function (x) {
+      var s = x.song; d.textContent = "";
+      var status = h("select", {}, Object.keys(STATUS).map(function (k) { return h("option", { value: k, text: STATUS[k], selected: k === s.status }); }));
+      var note = h("textarea", { placeholder: "Note for the history (optional)" });
+      var adminNotes = h("textarea", { placeholder: "Private notes about this song" }); adminNotes.value = s.admin_notes || "";
+      var card = h("div", { class: "card" },
+        h("h2", { text: s.title + " (" + s.artist + ")" }),
+        h("div", { class: "mute", text: "From the " + s.invite_artist + " invite. Created " + when(s.created_at) + (s.submitted_at ? ", submitted " + when(s.submitted_at) : ", not submitted yet") }),
+        h("div", { class: "row", style: "margin:12px 0" }, h("label", { text: "Status " }), status,
+          h("button", { class: "b", text: "Save status and notes", onclick: function () {
+            api("/admin/api/songs/" + id + "/status", { method: "POST", body: { status: status.value, note: note.value, admin_notes: adminNotes.value } }).then(function () { msg(""); loadSongs(); setTimeout(function () { openSong(id); }, 200); }).catch(function (e) { msg(e.message); });
+          } })),
+        note, h("div", { style: "height:8px" }), adminNotes);
+      var items = h("div", { class: "card" }, h("h2", { text: "Action items" }),
+        x.items.length ? h("ul", {}, x.items.map(function (i) { return h("li", {}, h("span", { class: "pill " + i.level, text: i.level }), " ", i.text); })) : h("p", { class: "ok", text: "Nothing outstanding." }));
+      var files = h("div", { class: "card" }, h("h2", { text: "Files" }),
+        x.files.length ? x.files.map(function (f) {
+          var ready = f.status === "ready", url = "/admin/files/" + f.id;
+          return h("div", { style: "margin:8px 0" }, h("strong", { text: KIND[f.kind] || f.kind }), " ", h("span", { class: "mute", text: f.orig_name + (ready ? " (" + mb(f.bytes) + ", " + f.detected + ")" : " [" + f.status + "]") }), " ",
+            ready ? h("a", { href: url, text: "Download", style: "color:var(--bronze)" }) : "",
+            ready && f.kind !== "proof" ? h("audio", { controls: true, preload: "none", src: url }) : "");
+        }) : h("p", { class: "mute", text: "No files uploaded." }));
+      var detail = h("div", { class: "card" }, h("h2", { text: "Song details" }), h("div", { class: "kv" },
+        h("div", { text: "ISRC" }), h("div", { text: s.isrc || "" }), h("div", { text: "ISWC" }), h("div", { text: s.iswc || "" }),
+        h("div", { text: "MLC song code" }), h("div", { text: s.mlc_song_code || "" }), h("div", { text: "PRO" }), h("div", { text: s.pro || "" }),
+        h("div", { text: "PRO work code" }), h("div", { text: s.pro_work_code || "" }), h("div", { text: "Self-published" }), h("div", { text: s.self_published ? "Yes" : "No" }),
+        h("div", { text: "Artist notes" }), h("div", { text: s.notes || "", style: "white-space:pre-wrap" })),
+        h("h2", { text: "Songwriters", style: "margin-top:14px" }), table([["Name", "name"], ["IPI", "ipi"], ["PRO", "pro"], ["Role", "role"], ["Share %", "share_pct"]], x.writers),
+        h("h2", { text: "Publishers", style: "margin-top:14px" }), table([["Name", "name"], ["IPI", "ipi"], ["PRO", "pro"], ["Share %", "share_pct"]], x.publishers));
+      var look = h("div", { class: "card" }, h("h2", { text: "What the lookup said" }),
+        x.lookups.length ? x.lookups.map(function (l) {
+          var w = (l.works || [])[0];
+          return h("details", {}, h("summary", { text: "Lookup " + when(l.fetched_at) + ": " + (w ? w.writers.length + " writers, " + w.publishers.length + " publishers" : (l.recordings.length ? "recording only" : "nothing found")) }),
+            h("pre", { style: "white-space:pre-wrap;font-size:13px", text: (l.trail || []).join("\n") + (w ? "\n\nWriters: " + w.writers.map(function (a) { return a.writerName + (a.writerIPI ? " (IPI " + a.writerIPI + ")" : ""); }).join("; ") + "\nPublishers: " + w.publishers.map(function (a) { return a.publisherName; }).join("; ") + "\nISWC: " + (w.iswc || "none") : "") }));
+        }) : h("p", { class: "mute", text: "The artist didn't use the lookup." }));
+      var log = h("div", { class: "card" }, h("h2", { text: "History" }), table([["When", "at"], ["Status", "status"], ["By", "by_who"], ["Note", "note"]], x.log.map(function (l) { return { at: when(l.at), status: STATUS[l.status] || l.status, by_who: l.by_who, note: l.note }; })),
+        h("p", {}, h("button", { class: "d", text: "Delete this song and its files", onclick: function () {
+          if (!confirm("Delete this song, its files and its history? This can't be undone.")) return;
+          api("/admin/api/songs/" + id + "/delete", { method: "POST", body: {} }).then(function () { loadSongs(); }).catch(function (e) { msg(e.message); });
+        } })));
+      d.append(card, items, files, detail, look, log); d.scrollIntoView();
+    }).catch(function (e) { d.textContent = ""; msg(e.message); });
+  }
+
+  // ----- invites -----
+  function loadInvites() {
+    var box = $("#v-inv"); box.textContent = "Loading…";
+    api("/admin/api/invites").then(function (rows) {
+      box.textContent = "";
+      var name = h("input", { placeholder: "Artist name", maxlength: 100, style: "min-width:240px" });
+      var days = h("input", { type: "number", value: "14", min: "1", max: "90", style: "width:80px" });
+      var uses = h("input", { type: "number", value: "20", min: "1", max: "100", style: "width:80px" });
+      var made = h("div");
+      var form = h("div", { class: "card" }, h("h2", { text: "New invite" }),
+        h("div", { class: "row" }, h("div", {}, h("div", { class: "mute", text: "Artist" }), name), h("div", {}, h("div", { class: "mute", text: "Valid for (days)" }), days), h("div", {}, h("div", { class: "mute", text: "Songs allowed" }), uses),
+          h("button", { class: "b", text: "Create link", onclick: function () {
+            api("/admin/api/invites", { method: "POST", body: { artist_name: name.value, days: Number(days.value), max_uses: Number(uses.value) } }).then(function (r) {
+              msg(""); made.textContent = "";
+              made.append(h("div", { class: "card", style: "border-color:var(--bronze)" }, h("strong", { text: "Link for " + r.artist_name }), h("code", { class: "link", text: r.link }),
+                h("div", { class: "mute", text: "Copy it now. For safety it is shown only once. If you lose it, revoke it and make a new one." }),
+                h("button", { class: "g", text: "Copy", onclick: function () { navigator.clipboard.writeText(r.link); } })));
+              loadInvitesList(rows, box, form, made, true);
+            }).catch(function (e) { msg(e.message); });
+          } })), made);
+      box.append(form);
+      loadInvitesList(rows, box, form, made);
+    }).catch(function (e) { box.textContent = ""; msg(e.message); });
+  }
+  function loadInvitesList(rows, box, form, made, refetch) {
+    var old = $("#inv-table"); if (old) old.remove();
+    var go = function (rs) {
+      box.append(h("div", { class: "card", id: "inv-table" }, h("h2", { text: "Invites" }),
+        rs.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Artist", "State", "Expires", "Songs started", "Submitted", ""].map(function (t) { return h("th", { text: t }); }))),
+          h("tbody", {}, rs.map(function (r) {
+            return h("tr", {}, h("td", { text: r.artist_name }), h("td", {}, h("span", { class: "pill " + (r.state === "active" ? "ok" : "mute"), text: r.state })), h("td", { text: when(r.expires_at) }),
+              h("td", { text: r.use_count + " of " + r.max_uses }), h("td", { text: String(r.submitted) }),
+              h("td", {}, r.state === "active" || r.state === "full" ? h("button", { class: "d", text: "Revoke", onclick: function () {
+                if (!confirm("Revoke this link? The artist won't be able to use it any more.")) return;
+                api("/admin/api/invites/" + r.id + "/revoke", { method: "POST", body: {} }).then(function () { api("/admin/api/invites").then(function (n) { loadInvitesList(n, box, form, made); }); }).catch(function (e) { msg(e.message); });
+              } }) : ""));
+          }))) : h("p", { class: "mute", text: "No invites yet." })));
+    };
+    if (refetch) api("/admin/api/invites").then(go); else go(rows);
+  }
+
+  function tab(which) {
+    $("#t-songs").className = which === "songs" ? "on" : ""; $("#t-inv").className = which === "inv" ? "on" : "";
+    $("#v-songs").classList.toggle("hidden", which !== "songs"); $("#v-inv").classList.toggle("hidden", which !== "inv");
+    msg(""); if (which === "songs") loadSongs(); else loadInvites();
+  }
+  $("#t-songs").addEventListener("click", function () { tab("songs"); });
+  $("#t-inv").addEventListener("click", function () { tab("inv"); });
+  api("/admin/api/me").then(function (m) { $("#me").textContent = "Signed in as " + m.email; }).catch(function (e) { msg(e.message); });
+  tab("songs");
+})();
+</script>
+</body>
+</html>

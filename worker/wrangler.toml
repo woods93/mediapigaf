@@ -2,5 +2,21 @@ name = "mlc-lookup-test"
 main = "worker.js"
 compatibility_date = "2026-11-01"
 
+# .sql and .html files are bundled as plain text (the migration and the two pages)
+[[rules]]
+type = "Text"
+globs = ["**/*.sql", "**/*.html"]
+fallthrough = true
+
 [vars]
 DEMO = "1"   # applies to the MLC source only; set to "0" once MLC_USER and MLC_PASS secrets exist
+
+# Song metadata. With no database_id, Cloudflare creates it on deploy where automatic provisioning is available.
+[[d1_databases]]
+binding = "DB"
+database_name = "mediapigaf-uploads"
+
+# Uploaded files (proofs, masters). Same note about automatic provisioning.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "mediapigaf-uploads"
