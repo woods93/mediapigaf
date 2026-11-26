@@ -188,7 +188,7 @@ table{width:100%;border-collapse:collapse;margin-top:8px}td,th{text-align:left;p
 .tag{display:inline-block;padding:1px 8px;border-radius:10px;background:#3a3d40;font-size:12px;color:var(--bronze)}
 </style></head><body><main>
 <h1>MLC Lookup Test</h1>
-<p class="note">Search by ISRC, or by artist and title. Results come straight from The MLC's public database.</p>
+<p class="note">Search by ISRC, or by artist and title. Pick a source below: MusicBrainz (open, community-edited) or The MLC (official US mechanical-rights database).</p>
 <form id="f">
 <label>Source</label><select id="source" style="width:100%;padding:10px;border-radius:6px;border:1px solid #444;background:#1c1e20;color:var(--text);font-size:16px"><option value="musicbrainz">MusicBrainz (no login)</option><option value="mlc">The MLC (needs login)</option></select>
 <label>ISRC</label><input id="isrc" placeholder="e.g. USRC17607839" autocomplete="off">
@@ -207,7 +207,8 @@ document.getElementById("f").addEventListener("submit",async e=>{
   }catch(x){out.innerHTML='<div class="card err">'+esc(x.message)+'</div>';return;}
   let h=d.demo?'<p><span class="tag">DEMO DATA</span> <span class="note">Not real. Shows the layout only.</span></p>':'';
   if(d.warnings&&d.warnings.length)h+='<div class="card err">Partial result. MusicBrainz was busy: '+d.warnings.map(esc).join('; ')+'. Try again in a minute.</div>';
-  if(!d.works.length){h+='<div class="card">No match in The MLC database'+(d.recordings.length?' (recording found, but no work record came back).':'.')+' The song may be unreleased or unregistered.</div>';}
+  const src=d.demo?"the demo data":(d.source==="musicbrainz"?"MusicBrainz":"The MLC database");
+  if(!d.works.length){h+='<div class="card">No match in '+src+(d.recordings.length?' (recording found, but no work record came back).':'.')+' The song may be unreleased or unregistered.</div>';}
   d.works.forEach(w=>{
     h+='<div class="card"><h2 style="margin:0 0 4px">'+esc(w.primaryTitle)+'</h2>'
      +'<div class="note">ISWC '+esc(w.iswc||"\\u2014")+' \\u00b7 MLC song code '+esc(w.mlcSongCode||"\\u2014")+(w.artists&&w.artists.length?' \\u00b7 '+esc(w.artists.join(", ")):'')+'</div>';
