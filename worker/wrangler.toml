@@ -11,12 +11,13 @@ fallthrough = true
 [vars]
 DEMO = "1"   # applies to the MLC source only; set to "0" once MLC_USER and MLC_PASS secrets exist
 
-# Song metadata. With no database_id, Cloudflare creates it on deploy where automatic provisioning is available.
+# Song metadata. The database already exists (Cloudflare created it during the first deploy attempt), so its id is pinned here.
 [[d1_databases]]
 binding = "DB"
 database_name = "mediapigaf-uploads"
+database_id = "ed10603b-adbf-43d6-a27c-990513706ad2"
 
-# Uploaded files (proofs, masters). Same note about automatic provisioning.
+# Uploaded files (proofs, masters). Private bucket, created in the dashboard (Cloudflare does not auto-create R2).
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "mediapigaf-uploads"
