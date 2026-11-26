@@ -123,7 +123,110 @@ async function lookupMB({ isrc, artist, title }) {
   return { demo: false, source: "musicbrainz", recordings, works, warnings };
 }
 
+// ---- credits.fm: free, CC-BY 4.0. Songwriter and publisher data comes from The MLC.
+// Public endpoint is api.credits.fm/v1 (the /api/... paths on credits.fm are internal). 15 lookups/minute per IP
+// without a key; a free key (secret CREDITS_KEY, sent as x-api-key) raises that to 300.
+const CFM = "https://api.credits.fm/v1";
+const clean = s => String(s || "").replace(/"/g, "").trim();
+
+async function creditsByIsrc(env, isrc) {
+  const headers = { Accept: "application/json", "User-Agent": MB_UA };
+  if (env.CREDITS_KEY) headers["x-api-key"] = env.CREDITS_KEY;
+  const r = await fetch(`${CFM}/isrc/${encodeURIComponent(isrc)}?contribute=false`, { headers });
+  if (r.status === 404) return { found: false, note: "not found" };
+  if (r.status === 429) return { found: false, note: "rate limited (15 lookups per minute without an API key)" };
+  if (!r.ok) return { found: false, note: `unavailable (HTTP ${r.status})` };
+  return { found: true, data: await r.json() };
+}
+
+function creditsToWork(j) {
+  const ROLE = { E: "Original publisher", SE: "Sub-publisher", AM: "Administrator" };
+  const writers = [], publishers = [], seen = new Set();
+  const addPub = p => {
+    if (!p) return;
+    const key = (p.ipi || "") + "|" + (p.name || "");
+    if (seen.has(key)) return;
+    seen.add(key);
+    publishers.push({ publisherName: p.name || "", publisherIpiNumber: p.ipi || "", publisherRole: ROLE[p.role] || p.role || "" });
+  };
+  for (const s of j.songwriters || []) {
+    writers.push({ writerName: s.name || "", writerIPI: s.ipi || "", writerRoleCode: s.role || "" });
+    for (const p of s.publishers || []) addPub(p);
+  }
+  for (const p of j.publishers || []) addPub(p);
+  return {
+    primaryTitle: j.song_title || j.recording_title || "", artists: j.artist_names || [],
+    iswc: j.iswc || "", mlcSongCode: "", matchStatus: j.match_status || "",
+    akas: [], writers, publishers,
+  };
+}
+
+// ---- Deezer: open API, no key. Knows recordings (title, artist, album, ISRC), not writers. Errors come back as HTTP 200.
+const DZ = "https://api.deezer.com";
+async function dz(path) {
+  const r = await fetch(`${DZ}${path}`, { headers: { Accept: "application/json", "User-Agent": MB_UA } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  return j && j.error ? null : j;
+}
+const dzRecording = t => ({
+  id: t.id, title: t.title, isrc: (t.isrc || "").toUpperCase(),
+  artist: (t.artist && t.artist.name) || "", album: (t.album && t.album.title) || "",
+  releaseDate: t.release_date || "", link: t.link || "", labels: [],
+});
+
+// Auto mode. With an ISRC: credits.fm first, then Deezer to at least confirm the recording.
+// With only artist and title: Deezer finds the recording and its ISRC, then credits.fm gets the writers.
+async function lookupAuto(env, { isrc, artist, title }) {
+  const trail = [], recordings = [], works = [];
+  let code = isrc || "";
+
+  if (!code) {
+    try {
+      const s = await dz(`/search?q=${encodeURIComponent(`artist:"${clean(artist)}" track:"${clean(title)}"`)}&limit=3`);
+      const hit = s && s.data && s.data[0];
+      if (!hit) trail.push("Deezer: no recording found for that artist and title");
+      else {
+        const full = await dz(`/track/${hit.id}`);
+        if (full) {
+          recordings.push(dzRecording(full));
+          code = (full.isrc || "").toUpperCase();
+          trail.push(`Deezer: found "${full.title}" by ${(full.artist && full.artist.name) || "unknown"}` + (code ? `, ISRC ${code}` : ", but it lists no ISRC"));
+        }
+      }
+    } catch (e) { trail.push(`Deezer: ${e.message || e}`); }
+  }
+
+  if (code) {
+    try {
+      const c = await creditsByIsrc(env, code);
+      if (c.found) {
+        const w = creditsToWork(c.data);
+        works.push(w);
+        trail.push(`credits.fm: found (${w.writers.length} writers, ${w.publishers.length} publishers, MLC match: ${w.matchStatus || "unknown"})`);
+      } else trail.push(`credits.fm: ${c.note}`);
+    } catch (e) { trail.push(`credits.fm: ${e.message || e}`); }
+
+    if (!works.length && !recordings.length) {
+      try {
+        const t = await dz(`/track/isrc:${encodeURIComponent(code)}`);
+        if (t) {
+          recordings.push(dzRecording(t));
+          trail.push(`Deezer: found "${t.title}" by ${(t.artist && t.artist.name) || "unknown"} (recording only, no writer data)`);
+        } else trail.push("Deezer: ISRC not found");
+      } catch (e) { trail.push(`Deezer: ${e.message || e}`); }
+    }
+  }
+
+  return {
+    demo: false, source: "auto", trail, recordings, works,
+    attribution: works.length ? { text: "Songwriter and publisher data: credits.fm (CC-BY 4.0), sourced from The MLC.", url: `https://isrc.fm/${code}` } : null,
+  };
+}
+
 async function lookup(env, { isrc, artist, title, source }) {
+  source = source || "auto";
+  if (source === "auto") return lookupAuto(env, { isrc, artist, title });
   if (source === "musicbrainz") return lookupMB({ isrc, artist, title });  // always live, no login needed
   if (env.DEMO === "1") return DEMO_DATA;                                   // MLC stays in demo mode until DEMO = "0"
   const q = {};
@@ -187,10 +290,10 @@ table{width:100%;border-collapse:collapse;margin-top:8px}td,th{text-align:left;p
 .err{color:#e07a6a}.note{color:var(--mute);font-size:14px}pre{white-space:pre-wrap;word-break:break-word;font-size:12px;color:var(--mute)}
 .tag{display:inline-block;padding:1px 8px;border-radius:10px;background:#3a3d40;font-size:12px;color:var(--bronze)}
 </style></head><body><main>
-<h1>MLC Lookup Test</h1>
-<p class="note">Search by ISRC, or by artist and title. Pick a source below: MusicBrainz (open, community-edited) or The MLC (official US mechanical-rights database).</p>
+<h1>Song Lookup Test</h1>
+<p class="note">Search by ISRC, or by artist and title. Auto asks credits.fm for the writers and publishers (their data comes from The MLC) and uses Deezer to find or confirm the recording. You can also pick MusicBrainz or The MLC directly.</p>
 <form id="f">
-<label>Source</label><select id="source" style="width:100%;padding:10px;border-radius:6px;border:1px solid #444;background:#1c1e20;color:var(--text);font-size:16px"><option value="musicbrainz">MusicBrainz (no login)</option><option value="mlc">The MLC (needs login)</option></select>
+<label>Source</label><select id="source" style="width:100%;padding:10px;border-radius:6px;border:1px solid #444;background:#1c1e20;color:var(--text);font-size:16px"><option value="auto">Auto: credits.fm, then Deezer</option><option value="musicbrainz">MusicBrainz (no login)</option><option value="mlc">The MLC (needs login)</option></select>
 <label>ISRC</label><input id="isrc" placeholder="e.g. USRC17607839" autocomplete="off">
 <label>Artist (optional with ISRC)</label><input id="artist" autocomplete="off">
 <label>Title (optional with ISRC)</label><input id="title" autocomplete="off">
@@ -208,14 +311,17 @@ document.getElementById("f").addEventListener("submit",async e=>{
   let h=d.demo?'<p><span class="tag">DEMO DATA</span> <span class="note">Not real. Shows the layout only.</span></p>':'';
   if(d.warnings&&d.warnings.length)h+='<div class="card err">Partial result. MusicBrainz was busy: '+d.warnings.map(esc).join('; ')+'. Try again in a minute.</div>';
   const src=d.demo?"the demo data":(d.source==="musicbrainz"?"MusicBrainz":"The MLC database");
-  if(!d.works.length){h+='<div class="card">No match in '+src+(d.recordings.length?' (recording found, but no work record came back).':'.')+' The song may be unreleased or unregistered.</div>';}
+  if(d.trail&&d.trail.length)h+='<div class="card"><div class="note">What each source said</div><ul style="margin:6px 0 0;padding-left:20px">'+d.trail.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul></div>';
+  if(d.source==="auto")(d.recordings||[]).forEach(r=>{h+='<div class="card"><div class="note">Recording</div><h3 style="margin:4px 0">'+esc(r.title)+'</h3><div class="note">'+esc(r.artist)+(r.album?' \\u00b7 '+esc(r.album):'')+(r.releaseDate?' \\u00b7 '+esc(r.releaseDate):'')+' \\u00b7 ISRC '+esc(r.isrc||"\\u2014")+'</div></div>';});
+  if(!d.works.length){h+='<div class="card">'+(d.source==="auto"?(d.recordings.length?'Recording found, but no songwriter or publisher data came back from credits.fm.':'Nothing found. The song may be unreleased, or none of these sources know it yet.'):'No match in '+src+(d.recordings.length?' (recording found, but no work record came back).':'.')+' The song may be unreleased or unregistered.')+'</div>';}
   d.works.forEach(w=>{
     h+='<div class="card"><h2 style="margin:0 0 4px">'+esc(w.primaryTitle)+'</h2>'
-     +'<div class="note">ISWC '+esc(w.iswc||"\\u2014")+' \\u00b7 MLC song code '+esc(w.mlcSongCode||"\\u2014")+(w.artists&&w.artists.length?' \\u00b7 '+esc(w.artists.join(", ")):'')+'</div>';
+     +'<div class="note">ISWC '+esc(w.iswc||"\\u2014")+' \\u00b7 MLC song code '+esc(w.mlcSongCode||"\\u2014")+(w.matchStatus?' \\u00b7 MLC match: '+esc(w.matchStatus):'')+(w.artists&&w.artists.length?' \\u00b7 '+esc(w.artists.join(", ")):'')+'</div>';
     if(w.akas&&w.akas.length)h+='<p class="note">Also known as: '+w.akas.map(a=>esc(a.akaTitle)).join("; ")+'</p>';
     h+='<h3>Writers</h3><table><tr><th>Name</th><th>IPI</th><th>Role</th></tr>'+(w.writers||[]).map(x=>'<tr><td>'+esc(x.writerName||((x.writerFirstName||"")+" "+(x.writerLastName||"")))+'</td><td>'+esc(x.writerIPI||"\\u2014")+'</td><td>'+esc(x.writerRoleCode||"\\u2014")+'</td></tr>').join("")+'</table>';
-    h+='<h3>Publishers</h3><table><tr><th>Name</th><th>IPI</th><th>MLC #</th><th>Share</th><th>Administrator</th></tr>'+(w.publishers||[]).map(p=>'<tr><td>'+esc(p.publisherName)+'</td><td>'+esc(p.publisherIpiNumber||"\\u2014")+'</td><td>'+esc(p.mlcPublisherNumber||"\\u2014")+'</td><td>'+esc(p.collectionShare??"\\u2014")+'</td><td>'+esc((p.administrators||[]).map(a=>a.publisherName).join(", ")||"\\u2014")+'</td></tr>').join("")+'</table></div>';
+    h+='<h3>Publishers</h3><table><tr><th>Name</th><th>IPI</th><th>Role</th><th>MLC #</th><th>Share</th><th>Administrator</th></tr>'+(w.publishers||[]).map(p=>'<tr><td>'+esc(p.publisherName)+'</td><td>'+esc(p.publisherIpiNumber||"\\u2014")+'</td><td>'+esc(p.publisherRole||"\\u2014")+'</td><td>'+esc(p.mlcPublisherNumber||"\\u2014")+'</td><td>'+esc(p.collectionShare??"\\u2014")+'</td><td>'+esc((p.administrators||[]).map(a=>a.publisherName).join(", ")||"\\u2014")+'</td></tr>').join("")+'</table></div>';
   });
+  if(d.attribution)h+='<p class="note">'+esc(d.attribution.text)+' <a href="'+esc(d.attribution.url)+'" style="color:var(--bronze)">'+esc(d.attribution.url)+'</a></p>';
   h+='<details class="card"><summary>Raw response</summary><pre>'+esc(JSON.stringify(d,null,2))+'</pre></details>';
   out.innerHTML=h;
 });
