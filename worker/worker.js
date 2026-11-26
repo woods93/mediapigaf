@@ -154,6 +154,16 @@ export default {
         if (!body.isrc && !(body.title && body.artist)) {
           return Response.json({ error: "Enter an ISRC, or both artist and title." }, { status: 400 });
         }
+        if (body.isrc) {
+          const code = String(body.isrc).trim().toUpperCase().replace(/[\s-]/g, "");
+          if (/^T\d{10}$/.test(code) || /^T[\d.]{11,13}\d$/.test(String(body.isrc).trim().toUpperCase().replace(/-/g, ""))) {
+            return Response.json({ error: "That looks like an ISWC (a code for the song itself), not an ISRC (a code for one recording, 12 characters like USRC17607839). Enter the ISRC, or use artist and title." }, { status: 400 });
+          }
+          if (!/^[A-Z]{2}[A-Z0-9]{3}\d{7}$/.test(code)) {
+            return Response.json({ error: "That doesn't look like an ISRC. An ISRC is 12 characters: 2 letters, then 3 letters or digits, then 7 digits (for example USRC17607839)." }, { status: 400 });
+          }
+          body.isrc = code;
+        }
         return Response.json(await lookup(env, body));
       } catch (e) {
         return Response.json({ error: String(e.message || e) }, { status: 502 });
