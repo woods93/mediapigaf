@@ -178,7 +178,7 @@ const dzRecording = t => ({
 // Auto mode. With an ISRC: credits.fm first, then Deezer to at least confirm the recording.
 // With only artist and title: Deezer finds the recording and its ISRC, then credits.fm gets the writers.
 async function lookupAuto(env, { isrc, artist, title }) {
-  const trail = [], recordings = [], works = [];
+  const trail = [], recordings = [], works = [], raw = {};
   let code = isrc || "";
 
   if (!code) {
@@ -201,6 +201,7 @@ async function lookupAuto(env, { isrc, artist, title }) {
     try {
       const c = await creditsByIsrc(env, code);
       if (c.found) {
+        raw.credits_fm = c.data;   // untouched payload, so the Raw response panel shows exactly what credits.fm sent
         const w = creditsToWork(c.data);
         works.push(w);
         trail.push(`credits.fm: found (${w.writers.length} writers, ${w.publishers.length} publishers, MLC match: ${w.matchStatus || "unknown"})`);
@@ -219,7 +220,7 @@ async function lookupAuto(env, { isrc, artist, title }) {
   }
 
   return {
-    demo: false, source: "auto", trail, recordings, works,
+    demo: false, source: "auto", trail, recordings, works, raw,
     attribution: works.length ? { text: "Songwriter and publisher data: credits.fm (CC-BY 4.0), sourced from The MLC.", url: `https://isrc.fm/${code}` } : null,
   };
 }
