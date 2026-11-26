@@ -9,9 +9,9 @@ globs = ["**/*.sql", "**/*.html"]
 fallthrough = true
 
 [vars]
-DEMO = "1"
+DEMO = "1"   # applies to the MLC source only; set to "0" once MLC_USER and MLC_PASS secrets exist
 ACCESS_TEAM_DOMAIN = "gentle-haze-fb19.cloudflareaccess.com"
-ACCESS_AUD = "9535a71a6fd98c8e6cedb27dd5fa72d3eb25d0bd0ea303da506a4eda9ae8f3fa"   # applies to the MLC source only; set to "0" once MLC_USER and MLC_PASS secrets exist
+ACCESS_AUD = "9535a71a6fd98c8e6cedb27dd5fa72d3eb25d0bd0ea303da506a4eda9ae8f3fa"
 
 # Song metadata. The database already exists (Cloudflare created it during the first deploy attempt), so its id is pinned here.
 [[d1_databases]]
