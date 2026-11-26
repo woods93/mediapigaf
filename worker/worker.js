@@ -140,7 +140,11 @@ async function creditsByIsrc(env, isrc) {
 }
 
 function creditsToWork(j) {
-  const ROLE = { E: "Original publisher", SE: "Sub-publisher", AM: "Administrator" };
+  const ROLE = {
+    E: "Original publisher", SE: "Sub-publisher", AM: "Administrator",
+    OriginalPublisher: "Original publisher", SubPublisher: "Sub-publisher", RightsAdministrator: "Administrator",
+    ComposerLyricist: "Composer / Lyricist", ComposerAuthor: "Composer / Author", Composer: "Composer", Author: "Author / Lyricist",
+  };
   const writers = [], publishers = [], seen = new Set();
   const addPub = p => {
     if (!p) return;
@@ -150,13 +154,13 @@ function creditsToWork(j) {
     publishers.push({ publisherName: p.name || "", publisherIpiNumber: p.ipi || "", publisherRole: ROLE[p.role] || p.role || "" });
   };
   for (const s of j.songwriters || []) {
-    writers.push({ writerName: s.name || "", writerIPI: s.ipi || "", writerRoleCode: s.role || "" });
+    writers.push({ writerName: s.name || "", writerIPI: s.ipi || "", writerRoleCode: ROLE[s.role] || s.role || "" });
     for (const p of s.publishers || []) addPub(p);
   }
   for (const p of j.publishers || []) addPub(p);
   return {
     primaryTitle: j.song_title || j.recording_title || "", artists: j.artist_names || [],
-    iswc: j.iswc || "", mlcSongCode: "", matchStatus: j.match_status || "",
+    iswc: j.iswc || "", mlcSongCode: j.mlc_song_code || "", mlcUrl: j.mlc_portal_url || "", matchStatus: j.match_status || "",
     akas: [], writers, publishers,
   };
 }
@@ -325,6 +329,7 @@ document.getElementById("f").addEventListener("submit",async e=>{
   d.works.forEach(w=>{
     h+='<div class="card"><h2 style="margin:0 0 4px">'+esc(w.primaryTitle)+'</h2>'
      +'<div class="note">ISWC '+esc(w.iswc||"\\u2014")+' \\u00b7 MLC song code '+esc(w.mlcSongCode||"\\u2014")+(w.matchStatus?' \\u00b7 MLC match: '+esc(w.matchStatus):'')+(w.artists&&w.artists.length?' \\u00b7 '+esc(w.artists.join(", ")):'')+'</div>';
+    if(w.mlcUrl&&/^https:\\/\\/portal\\.themlc\\.com\\//.test(w.mlcUrl))h+='<p class="note"><a href="'+esc(w.mlcUrl)+'" target="_blank" rel="noopener" style="color:var(--bronze)">Open this song in the MLC Portal</a></p>';
     if(w.akas&&w.akas.length)h+='<p class="note">Also known as: '+w.akas.map(a=>esc(a.akaTitle)).join("; ")+'</p>';
     h+='<h3>Writers</h3><table><tr><th>Name</th><th>IPI</th><th>Role</th></tr>'+(w.writers||[]).map(x=>'<tr><td>'+esc(x.writerName||((x.writerFirstName||"")+" "+(x.writerLastName||"")))+'</td><td>'+esc(x.writerIPI||"\\u2014")+'</td><td>'+esc(x.writerRoleCode||"\\u2014")+'</td></tr>').join("")+'</table>';
     h+='<h3>Publishers</h3><table><tr><th>Name</th><th>IPI</th><th>Role</th><th>MLC #</th><th>Share</th><th>Administrator</th></tr>'+(w.publishers||[]).map(p=>'<tr><td>'+esc(p.publisherName)+'</td><td>'+esc(p.publisherIpiNumber||"\\u2014")+'</td><td>'+esc(p.publisherRole||"\\u2014")+'</td><td>'+esc(p.mlcPublisherNumber||"\\u2014")+'</td><td>'+esc(p.collectionShare??"\\u2014")+'</td><td>'+esc((p.administrators||[]).map(a=>a.publisherName).join(", ")||"\\u2014")+'</td></tr>').join("")+'</table></div>';
